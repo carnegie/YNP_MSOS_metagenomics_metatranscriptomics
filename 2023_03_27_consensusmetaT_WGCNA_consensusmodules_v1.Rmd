@@ -1,0 +1,352 @@
+---
+title: "2023_03_27_consensusmetaT_WGCNA_consensusmodules_v1"
+output: html_notebook
+---
+Taking the output of the individual TOM calculation from 2023/03/23, 
+use these to generate consensus modules and output.
+```{r}
+library(tidyverse)
+library(WGCNA)
+library(readxl)
+options(stringsAsFactors = FALSE) #set parameters for WGCNA
+
+```
+
+
+```{r}
+#import data and results from 2023/03/23
+load("2023_03_23_consensusmetaT_WGCNA_individual_TOMs.RData")
+```
+
+```{r}
+#import metadata
+#create a traits table
+traitsfile = read_excel("2023_03_21_sample_metadata_wgcna.xlsx",
+                        col_types=c("text","text","text","text","text","numeric",
+                                    "date","date","numeric","text","numeric","numeric",
+                                    "numeric","numeric","numeric","numeric","text",
+                                    "text","numeric","numeric","numeric","numeric"),
+                        na="NA", trim_ws=TRUE)
+
+dim(traitsfile)
+names(traitsfile)
+#may need to be numeric traits for correlation analysis (see tutorial on consensus relate modules to traits)
+# seems like nonnumerics (including date) get passed as NA in the cor function below
+
+Traits = vector(mode="list", length = 3)
+for (set in 1:3)
+{
+  setSamples = rownames(multiExpr[[set]]$data);
+  traitRows =  match(setSamples,traitsfile$FullSampleName);
+  Traits[[set]] = list(data=traitsfile[traitRows,-1]);
+  rownames(Traits[[set]]$data)=setSamples;
+}
+```
+
+Now calculate consensus modules (power =18), signed
+here mergeCutHeight = 0.25, seepSplit=2, minModuleSize=30, remainder=default
+```{r}
+bnet = blockwiseConsensusModules(
+multiExpr, maxBlockSize = 25000, power = 18, minModuleSize = 30,
+networkType = "signed", individualTOMInfo = indTOMs,
+deepSplit = 2,
+pamRespectsDendro = FALSE,
+mergeCutHeight = 0.25, numericLabels = TRUE,
+saveIndividualTOMs = FALSE, verbose = 6,
+saveConsensusTOMs = TRUE, consensusTOMFilePattern = "2023_03_27_consensus_v1_%b.RData")
+
+```
+
+view output
+
+```{r}
+table(bnet$colors)
+```
+```{r}
+MEs = bnet$multiMEs[[1]]$data
+#plot the eigengene expression for each module (0 is not a real module)
+par(mfrow=c(3,3))
+for (module in 1:length(MEs)){
+  ME <- MEs[,module]
+  #color <- str_remove(colnames(MEs)[module],"ME")
+  plot(x=c(0, 120, 240,360,480,600,720,840,960,1080,1200,1320),y=ME, main="",col="black",type="o", cex.main=1, xaxt="n")
+  axis(side=1, 
+      at=c(0, 120, 240,360,480,600,720,840,960,1080,1200,1320),
+       labels=c("18:00","20:00","22:00","00:00","02:00","04:00","06:00","08:00",
+              "10:00","12:00","14:00","16:00"))#set the x axis as time in hours)
+  title(main=c(colnames(MEs)[module]))
+  # mtext(side=3, line=1, at=0.07, adj=0, cex=0.8, colnames(MEs)[module])
+  # mtext(side=3, line=0, at=150, adj=0, cex=0.7,filter(modulesize, ME==colnames(MEs)[module])$n)
+  # mtext(side=3, line=0, at=0.07, adj=0, cex=0.7,"n=")
+  # mtext(side=3, line=0, at=500, adj=0, cex=0.7,"pct variance=")
+  # mtext(side=3, line=0, at=1200, cex=0.7,round(filter(modulesize, ME==colnames(MEs)[module])$variance, digits = 3)*100)
+  #
+  
+}
+```
+
+```{r}
+MEs = bnet$multiMEs[[2]]$data
+#plot the eigengene expression for each module (0 is not a real module)
+par(mfrow=c(3,3))
+for (module in 1:length(MEs)){
+  ME <- MEs[,module]
+  #color <- str_remove(colnames(MEs)[module],"ME")
+  plot(x=c(85, 125, 250, 360, 660, 735, 820, 880, 967, 1100, 1205, 1320),y=ME, main="",col="black",type="o", cex.main=1, xaxt="n")
+  axis(side=1, 
+      at=c(0, 120, 240,360,480,600,720,840,960,1080,1200,1320),
+       labels=c("18:00","20:00","22:00","00:00","02:00","04:00","06:00","08:00",
+              "10:00","12:00","14:00","16:00"))#set the x axis as time in hours)
+  title(main=c(colnames(MEs)[module]))
+  # mtext(side=3, line=1, at=0.07, adj=0, cex=0.8, colnames(MEs)[module])
+  # mtext(side=3, line=0, at=150, adj=0, cex=0.7,filter(modulesize, ME==colnames(MEs)[module])$n)
+  # mtext(side=3, line=0, at=0.07, adj=0, cex=0.7,"n=")
+  # mtext(side=3, line=0, at=500, adj=0, cex=0.7,"pct variance=")
+  # mtext(side=3, line=0, at=1200, cex=0.7,round(filter(modulesize, ME==colnames(MEs)[module])$variance, digits = 3)*100)
+  #
+  
+}
+```
+```{r}
+MEs = bnet$multiMEs[[3]]$data
+#plot the eigengene expression for each module (0 is not a real module)
+par(mfrow=c(3,3))
+for (module in 1:length(MEs)){
+  ME <- MEs[,module]
+  #color <- str_remove(colnames(MEs)[module],"ME")
+  plot(x=c(0, 105,195,240,780,915,1080,1200),y=ME, main="",col="black",type="o", cex.main=1, xaxt="n")
+  axis(side=1, 
+      at=c(0, 120, 240,360,480,600,720,840,960,1080,1200,1320),
+       labels=c("18:00","20:00","22:00","00:00","02:00","04:00","06:00","08:00",
+              "10:00","12:00","14:00","16:00"))#set the x axis as time in hours)
+  title(main=c(colnames(MEs)[module]))
+  # mtext(side=3, line=1, at=0.07, adj=0, cex=0.8, colnames(MEs)[module])
+  # mtext(side=3, line=0, at=150, adj=0, cex=0.7,filter(modulesize, ME==colnames(MEs)[module])$n)
+  # mtext(side=3, line=0, at=0.07, adj=0, cex=0.7,"n=")
+  # mtext(side=3, line=0, at=500, adj=0, cex=0.7,"pct variance=")
+  # mtext(side=3, line=0, at=1200, cex=0.7,round(filter(modulesize, ME==colnames(MEs)[module])$variance, digits = 3)*100)
+  #
+  
+}
+```
+
+```{r}
+#look at the relationship between eigengenes
+signif(cor(MEs,use="p"),2)
+```
+
+```{r}
+#find dissmilarity between eigengenes and cluster
+dissME = (1-t(cor(MEs, method="p")))/2
+hclustME = hclust(as.dist(dissME), method="average")
+plot(hclustME)
+```
+
+```{r}
+#correlate the Traits to modules
+moduleTraitCor = list()
+moduleTraitPvalue = list()
+for (set in 1:nSets)
+{
+  moduleTraitCor[[set]] = cor(bnet$multiMEs[[set]]$data, Traits[[set]]$data, use="p");
+  moduleTraitPvalue[[set]] = corPvalueFisher(moduleTraitCor[[set]],exprSize$nSamples[set]);
+}
+```
+
+```{r}
+# Open a suitably sized window (the user should change the window size if necessary)
+sizeGrWindow(15,15)
+# Plot the module-trait relationship table for set number 1
+set = 1
+textMatrix = paste(signif(moduleTraitCor[[set]], 2), "\n(",
+signif(moduleTraitPvalue[[set]], 1), ")", sep = "");
+dim(textMatrix) = dim(moduleTraitCor[[set]])
+par(mar = c(6, 8.8, 3, 2.2));
+labeledHeatmap(Matrix = moduleTraitCor[[set]],
+  xLabels = names(Traits[[set]]$data),
+  yLabels = names(bnet$multiMEs[[set]]$data),
+  #ySymbols = MEColorNames,
+  colorLabels = FALSE,
+  colors = greenWhiteRed(50),
+  textMatrix = textMatrix,
+    setStdMargins = FALSE,
+  cex.text = 0.5,
+  zlim = c(-1,1),
+  main = paste("Module--trait relationships in", setLabels[set]))
+```
+
+```{r}
+# Open a suitably sized window (the user should change the window size if necessary)
+sizeGrWindow(10,7)
+# Plot the module-trait relationship table for set number 1
+set = 2
+textMatrix = paste(signif(moduleTraitCor[[set]], 2), "\n(",
+signif(moduleTraitPvalue[[set]], 1), ")", sep = "");
+dim(textMatrix) = dim(moduleTraitCor[[set]])
+par(mar = c(6, 8.8, 3, 2.2));
+labeledHeatmap(Matrix = moduleTraitCor[[set]],
+  xLabels = names(Traits[[set]]$data),
+  yLabels = names(bnet$multiMEs[[set]]$data),
+  #ySymbols = MEColorNames,
+  colorLabels = FALSE,
+  colors = greenWhiteRed(50),
+  textMatrix = textMatrix,
+    setStdMargins = FALSE,
+  cex.text = 0.5,
+  zlim = c(-1,1),
+  main = paste("Module--trait relationships in", setLabels[set]))
+```
+
+```{r}
+# Open a suitably sized window (the user should change the window size if necessary)
+sizeGrWindow(10,7)
+# Plot the module-trait relationship table for set number 1
+set = 3
+textMatrix = paste(signif(moduleTraitCor[[set]], 2), "\n(",
+signif(moduleTraitPvalue[[set]], 1), ")", sep = "");
+dim(textMatrix) = dim(moduleTraitCor[[set]])
+par(mar = c(6, 8.8, 3, 2.2));
+labeledHeatmap(Matrix = moduleTraitCor[[set]],
+  xLabels = names(Traits[[set]]$data),
+  yLabels = names(bnet$multiMEs[[set]]$data),
+  #ySymbols = MEColorNames,
+  colorLabels = FALSE,
+  colors = greenWhiteRed(50),
+  textMatrix = textMatrix,
+    setStdMargins = FALSE,
+  cex.text = 0.5,
+  zlim = c(-1,1),
+  main = paste("Module--trait relationships in", setLabels[set]))
+```
+
+save output
+```{r}
+MEgcs = as_tibble(t(data.frame(lapply(bnet$colors, type.convert, as.is=TRUE), stringsAsFactors=FALSE)),
+                  rownames="GC") %>% mutate(ME = str_c("ME",V1)) %>% 
+  mutate(GC= str_replace_all(GC,"\\.","-"))%>%
+  separate(GC, c("Lineage","GeneCluster"), sep="_GC", remove=FALSE) %>%
+  mutate(GeneCluster = str_c("GC",GeneCluster)) %>%rename(module_num=V1)
+```
+```{r}
+#load("2023_03_27_consensus_v1_1.RData")
+```
+
+```{r}
+#cyto =exportNetworkToCytoscape(consTomDS, nodeAttr = bnet$colors)
+```
+
+
+```{r}
+#calculate gene significance (for numeric traits)
+#calculate kME for each gene (module membership)
+consMEs.unord = multiSetMEs(multiExpr,universalColors=bnet$colors, excludeGrey = TRUE)
+GS = list();
+kME = list();
+for (set in 1:nSets)
+{
+  GS[[set]] = corAndPvalue(multiExpr[[set]]$data, Traits[[set]]$data);
+  kME[[set]] = corAndPvalue(multiExpr[[set]]$data, consMEs.unord[[set]]$data);
+}
+
+```
+```{r}
+#calculate connectivity of genes within module
+adjms2005 = abs(cor(multiExpr[[1]]$data, use="p"))^6
+alldegreesms2005 = intramodularConnectivity(adjms2005,bnet$colors)
+
+adjms2009 = abs(cor(multiExpr[[2]]$data, use="p"))^6
+alldegreesms2009 = intramodularConnectivity(adjms2009,bnet$colors)
+
+adjos2009 = abs(cor(multiExpr[[3]]$data, use="p"))^6
+alldegreesos2009 = intramodularConnectivity(adjos2009,bnet$colors)
+
+```
+
+
+```{r}
+#reshape data
+kMEmat = rbind(kME[[1]]$cor, kME[[2]]$cor,kME[[3]]$cor, kME[[1]]$p, kME[[2]]$p,kME[[3]]$p)
+MEnames = colnames(consMEs.unord[[1]]$data)
+nMEs = checkSets(consMEs.unord)$nGenes
+dim(kMEmat) = c(exprSize$nGenes, 6*nMEs)
+rownames(kMEmat) = names(multiExpr[[1]]$data)
+colnames(kMEmat) = spaste(c("kME.MS2005", "kME.MS2009","kME.OS2009",
+"p.kME.MS2005", "p.kME.MS2009","p.kME.OS2009"), rep(MEnames, rep(6,nMEs)))
+```
+
+```{r}
+#reshape data
+GSmat = rbind(GS[[1]]$cor, GS[[2]]$cor,GS[[3]]$cor, GS[[1]]$p, GS[[2]]$p,GS[[3]]$p)
+nTraits = checkSets(Traits)$nGenes
+traitNames = colnames(Traits[[1]]$data)
+dim(GSmat) = c(exprSize$nGenes, 6*nTraits)
+rownames(GSmat) = names(multiExpr[[1]]$data)
+colnames(GSmat) = spaste(c("kME.MS2005", "kME.MS2009","kME.OS2009",
+"p.kME.MS2005", "p.kME.MS2009","p.kME.OS2009"), rep(traitNames, rep(6,nTraits)))
+```
+
+```{r}
+#add a column for sample names
+eigengenesms2009 =bnet$multiMEs[[2]]$data %>% mutate(sample = c("R2cd","R3cd","R5cd","R6cd","R7cd","R8cd",
+                                       "R9cd","R10cd","R11cd","R12cd","R13cd","R14cd"))
+
+eigengenesms2005 = bnet$multiMEs[[1]]$data %>% mutate(sample = c("MSt1","MSt2","MSt3","MSt4","MSt5","MSt6","MSt7",
+                                                                 "MSt8","MSt9","MSP12","MSt11","MSt12"))
+
+
+eigengensos2009 = bnet$multiMEs[[3]]$data %>% mutate(sample = c("t1cd","t2cd","t4cd","t5cd","t8cd","t11cd","t13cd","t14cd"))
+```
+
+
+```{r}
+MEvarms2005 = propVarExplained(t(setlogcpmms2005), bnet$colors,bnet$multiMEs[[1]]$data, corFnc = "cor", corOptions = "use = 'p'")
+MEvarms2009 = propVarExplained(t(setlogcpmms2009), bnet$colors,bnet$multiMEs[[2]]$data, corFnc = "cor", corOptions = "use = 'p'")
+MEvaros2009 = propVarExplained(t(setlogcpmos2009), bnet$colors,bnet$multiMEs[[3]]$data, corFnc = "cor", corOptions = "use = 'p'")
+
+```
+
+```{r}
+modulesizems2005 = as_data_frame(c(bnet$colors)) %>% count(value) %>% mutate(ME = str_c("ME",value)) %>% mutate(variance = MEvarms2005)
+modulesizems2009 = as_data_frame(c(bnet$colors)) %>% count(value) %>% mutate(ME = str_c("ME",value)) %>% mutate(variance = MEvarms2009)
+modulesizeos2009 = as_data_frame(c(bnet$colors)) %>% count(value) %>% mutate(ME = str_c("ME",value)) %>% mutate(variance = MEvaros2009)
+
+modulesize = as_data_frame(c(bnet$colors)) %>% count(value) %>% mutate(ME = str_c("ME",value)) %>% mutate(variance_MS2005 = MEvarms2005) %>% mutate(variance_MS2009 = MEvarms2009) %>%mutate(variance_OS2009 = MEvaros2009) 
+
+```
+
+
+
+```{r}
+write_delim(MEgcs,"2023_03_27_MEassignments_v1.txt", delim = "\t")
+#write_delim(cyto,"2023_03_27_cytoscape_v1.txt",delim="\t")
+
+write_delim(as_tibble(kMEmat, rownames="Lineage_GC"),"2023_03_27_kME_v1.txt",delim="\t")
+
+write_delim(as_tibble(GSmat, rownames="Lineage_GC"),"2023_03_27_GS_v1.txt",delim="\t")
+
+
+write_delim(as_tibble(alldegreesms2005, rownames="Lineage_GC"),"2023_03_27_intramodularconnectivity_MS2005_v1.txt",delim="\t")
+write_delim(as_tibble(alldegreesms2009, rownames="Lineage_GC"),"2023_03_27_intramodularconnectivity_MS2009_v1.txt",delim="\t")
+write_delim(as_tibble(alldegreesos2009, rownames="Lineage_GC"),"2023_03_27_intramodularconnectivity_OS2009_v1.txt",delim="\t")
+
+write_delim(as_tibble(moduleTraitCor[[1]], rownames="ME"),"2023_03_27_MEGS_MS2005_v1.txt",delim="\t")
+write_delim(as_tibble(moduleTraitCor[[2]], rownames="ME"),"2023_03_27_MEGS_MS2009_v1.txt",delim="\t")
+write_delim(as_tibble(moduleTraitCor[[3]], rownames="ME"),"2023_03_27_MEGS_OS2009_v1.txt",delim="\t")
+
+write_delim(as_tibble(moduleTraitPvalue[[1]], rownames="ME"),"2023_03_27_MEGSpvalue_MS2005_v1.txt",delim="\t")
+write_delim(as_tibble(moduleTraitPvalue[[2]], rownames="ME"),"2023_03_27_MEGSpvalue_MS2009_v1.txt",delim="\t")
+write_delim(as_tibble(moduleTraitPvalue[[3]], rownames="ME"),"2023_03_27_MEGSpvalue_OS2009_v1.txt",delim="\t")
+
+write_tsv(modulesize, "2023_03_27_consensuswgcna_allthree_ME_summary_v1.tsv")
+
+#export eigengenes
+write_tsv(eigengenesms2005,"2023_03_27_consensuswgcna_allthree_eignegenes_MS2005_v1.tsv")
+write_tsv(eigengenesms2009,"2023_03_27_consensuswgcna_allthree_eignegenes_MS2009_v1.tsv")
+write_tsv(eigengensos2009 ,"2023_03_27_consensuswgcna_allthree_eignegenes_OS2009_v1.tsv")
+```
+
+
+```{r}
+save(bnet,file="2023_03_27_consensuswgcna_v1.RData")
+save.image(file="2023_03_27_consenusmetaT_WGCNA_consensusmodules_v1.RData")
+```

@@ -1,0 +1,305 @@
+---
+title: "EdgeR normalization of bowtie2 mapping to consenus MAGs post aggregation"
+output: html_notebook
+---
+
+Normalize each of three time series individually and combined using the time series
+splines fit method recommened by edgeR. For the filtering step (filterByExpr), all edgeR defaults were used except
+min.count=1 (at least 1 count per group) Reads were mapped using bowtie2, filtered for quality,
+then counted using htseq-count. Here we sum the gene clusters for each lineage prior to normalization with edgeR
+
+
+```{r}
+library(tidyverse)
+library(edgeR)
+library(limma)
+library(statmod)
+library(splines)
+library(data.table)
+```
+
+
+
+```{r}
+#import htseq-count output
+#all counts are in a single file
+htdf = read_csv("2022.09.22_htseqCount_dataframe_backup.csv")
+
+```
+
+
+```{r}
+#groupby lineage, gene cluster and sum
+gcdf = htdf %>% group_by(Lineage, `Gene Cluster`) %>%summarize_at(vars(starts_with("Metofsampl")),sum)
+```
+
+
+```{r}
+#merge columns to create a unique ID for the rowname (format required by edgeR)
+gcdf = gcdf %>% unite("uid",Lineage:`Gene Cluster`, sep="_")%>% column_to_rownames("uid")
+```
+
+```{r}
+#export gcdf
+write.csv(gcdf,"GeneClusters_rawcounts.csv")
+```
+
+
+```{r}
+#define time series metadata
+ms2005names =c("MetofsampleMSt1","MetofsampleMSt2","MetofsampleMSt3","MetofsampleMSt4",
+               "MetofsampleMSt5","MetofsampleMSt6","MetofsampleMSt7","MetofsampleMSt8",
+               "MetofsampleMSt9","MetofsamplMSP12","MetofsamplMSt11","MetofsamplMSt12")
+ms2005times = c(0, 120, 240,360,480,600,720,840,960,1080,1200,1320)#starting from first sample=0
+ms2005groups = c(1,2,3,4,5,6,7,8,9,10,11,12)
+
+ms2009names = c("MetofsampleR2cd","MetofsampleR3cd","MetofsampleR5cd","MetofsampleR6cd",
+                "MetofsampleR7cd","MetofsampleR8cd","MetofsampleR9cd","MetofsamplR10cd",
+                "MetofsamplR11cd","MetofsamplR12cd","MetofsamplR13cd","MetofsamplR14cd")
+ms2009times = c(0, 40, 165, 275, 575, 650, 735, 795, 882,1015, 1120, 1235)
+ms2009groups = c(1,2,3,4,5,6,7,8,9,10,11,12)
+
+os2009names = c("Metofsamplet1cd","Metofsamplet2cd", "Metofsamplet4cd","Metofsamplet5cd",
+                "Metofsamplet8cd","Metofsamplt11cd", "Metofsamplt13cd", "Metofsamplt14cd")
+os2009times = c(0, 105,195,240,780,915,1080,1200)
+os2009groups = c(1,2,3,4,5,6,7,8)
+
+allsamples = c("MetofsampleMSt1","MetofsampleMSt2","MetofsampleMSt3","MetofsampleMSt4",
+               "MetofsampleMSt5","MetofsampleMSt6","MetofsampleMSt7","MetofsampleMSt8",
+               "MetofsampleMSt9","MetofsamplMSP12","MetofsamplMSt11","MetofsamplMSt12",
+             "Metofsamplet1cd","Metofsamplet2cd", "Metofsamplet4cd","Metofsamplet5cd",
+                "Metofsamplet8cd","Metofsamplt11cd", "Metofsamplt13cd", "Metofsamplt14cd",
+             "MetofsampleR2cd","MetofsampleR3cd","MetofsampleR5cd","MetofsampleR6cd",
+                "MetofsampleR7cd","MetofsampleR8cd","MetofsampleR9cd","MetofsamplR10cd",
+                "MetofsamplR11cd","MetofsamplR12cd","MetofsamplR13cd","MetofsamplR14cd") #artificially concatenated ms2005, os2009, ms2009 - first sample = 0
+alltimes = c(0, 120, 240,360,480,600,720,840,960,1080,1200,1320,1320,1425,1515,
+             1560,2100,2235,2400,2520,2530,2570,2695,2805,3105,3180,3265,3325,
+             3412,3545,3650,3765)
+allgroups = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,
+              27,28,29,30,31,32)
+```
+
+```{r}
+#separate hdtf into each time series and order columns if needed
+ms2005df = gcdf[,ms2005names]
+ms2009df = gcdf[,ms2009names]
+os2009df = gcdf[,os2009names]
+orderedgcdf = gcdf[,allsamples]
+```
+
+From here, run edgeR with the following options: RLE. natural spline with 3 degree of freedom 
+on each time series and the combined dataframe (minus R15cd which lacks metadata).
+
+MS2005
+```{r}
+#input into the DE analysis pipeline
+yms2005 <- DGEList(counts=ms2005df,group=ms2005groups)
+
+#remove genes that fit the default parameters for low expression in edgeR
+keepms2005 <-filterByExpr(yms2005, min.count=1)
+table(keepms2005)
+
+#use the library size calculation in edgeR with the RLE option
+yms2005 <- yms2005[keepms2005, , keep.lib.sizes=FALSE]
+yms2005 <- calcNormFactors(yms2005, method="RLE")
+yms2005$samples
+```
+```{r}
+#model as a 3-degree of freedom spline fit
+Xms2005 <- ns(ms2005times, df=3)
+designms2005 <- model.matrix(~ Xms2005)
+designms2005
+#estimate the dispersion
+yms2005 <- estimateDisp(yms2005, designms2005)
+sqrt(yms2005$common.dispersion)
+#plot the dispersion
+plotBCV(yms2005)
+#this estimates the coeffcients for each gene
+fitms2005 <- glmQLFit(yms2005, designms2005, robust=TRUE)
+plotQLDisp(fitms2005)
+
+#this looks at the fit of the model across the genes
+fitms2005 <- glmQLFTest(fitms2005, coef=2:4)
+
+#use the default significance test
+summary(decideTests(fitms2005))
+```
+```{r}
+tabms2005 <- as.data.frame(topTags(fitms2005, n=nrow(ms2005df)))
+```
+
+```{r}
+#export the results
+#generate the line fits for each gene
+logCPM.obs.ms2005 <- cpm(yms2005, normalized.lib.sizes = TRUE, log=TRUE, prior.count=fitms2005$prior.count)
+CPM.obs.ms2005 <-  cpm(yms2005, normalized.lib.sizes = TRUE, log=FALSE, prior.count=fitms2005$prior.count)
+logCPM.fit.ms2005 <- cpm(fitms2005, normalized.lib.sizes = TRUE, log=TRUE)
+```
+```{r}
+#export the RLE normalization, CPM, and log-CPM to files
+write.csv(yms2005[["samples"]],"Geneclusters_mincount1_MS2005_consensusMAGs_bowtie_library_normalization.csv")
+write.csv(CPM.obs.ms2005,"Geneclusters_mincount1_MS2005_consensusMAGs_bowtie_normalized_CPM.csv")
+write.csv(logCPM.obs.ms2005,"Geneclusters_mincount1_MS2005_consensusMAGs_bowtie_normalized_log2CPM.csv")
+write.csv(tabms2005,"Geneclusters_mincount1_MS2005_consensusMAGs_bowtie_edgeR_RLE_ns_fit.csv")
+```
+MS2009
+
+```{r}
+#input into the DE analysis pipeline
+yms2009 <- DGEList(counts=ms2009df,group=ms2009groups)
+
+#remove genes that fit the default parameters for low expression in edgeR
+keepms2009 <-filterByExpr(yms2009, min.count=1)
+table(keepms2009)
+
+#use the library size calculation in edgeR with the RLE option
+yms2009 <- yms2009[keepms2009, , keep.lib.sizes=FALSE]
+yms2009 <- calcNormFactors(yms2009, method="RLE")
+yms2009$samples
+```
+```{r}
+#model as a 3-degree of freedom spline fit
+Xms2009 <- ns(ms2009times, df=3)
+designms2009 <- model.matrix(~ Xms2009)
+designms2009
+#estimate the dispersion
+yms2009 <- estimateDisp(yms2009, designms2009)
+sqrt(yms2009$common.dispersion)
+#plot the dispersion
+plotBCV(yms2009)
+#this estimates the coeffcients for each gene
+fitms2009 <- glmQLFit(yms2009, designms2009, robust=TRUE)
+plotQLDisp(fitms2009)
+
+#this looks at the fit of the model across the genes
+fitms2009 <- glmQLFTest(fitms2009, coef=2:4)
+
+#use the default significance test
+summary(decideTests(fitms2009))
+```
+```{r}
+tabms2009 <- as.data.frame(topTags(fitms2009, n=nrow(ms2009df)))
+```
+
+```{r}
+#export the results
+#generate the line fits for each gene
+logCPM.obs.ms2009 <- cpm(yms2009, normalized.lib.sizes = TRUE, log=TRUE, prior.count=fitms2009$prior.count)
+CPM.obs.ms2009 <-  cpm(yms2009, normalized.lib.sizes = TRUE, log=FALSE, prior.count=fitms2009$prior.count)
+logCPM.fit.ms2009 <- cpm(fitms2009, normalized.lib.sizes = TRUE, log=TRUE)
+```
+```{r}
+#export the RLE normalization, CPM, and log-CPM to files
+write.csv(yms2009[["samples"]],"Geneclusters_mincount1_MS2009_consensusMAGs_bowtie_library_normalization.csv")
+write.csv(CPM.obs.ms2009,"Geneclusters_mincount1_MS2009_consensusMAGs_bowtie_normalized_CPM.csv")
+write.csv(logCPM.obs.ms2009,"Geneclusters_mincount1_MS2009_consensusMAGs_bowtie_normalized_log2CPM.csv")
+write.csv(tabms2009,"Geneclusters_mincount1_MS2009_consensusMAGs_bowtie_edgeR_RLE_ns_fit.csv")
+```
+OS2009
+
+```{r}
+#input into the DE analysis pipeline
+yos2009 <- DGEList(counts=os2009df,group=os2009groups)
+
+#remove genes that fit the default parameters for low expression in edgeR
+keepos2009 <-filterByExpr(yos2009, min.count=1)
+table(keepos2009)
+
+#use the library size calculation in edgeR with the RLE option
+yos2009 <- yos2009[keepos2009, , keep.lib.sizes=FALSE]
+yos2009 <- calcNormFactors(yos2009, method="RLE")
+yos2009$samples
+```
+```{r}
+#model as a 3-degree of freedom spline fit
+Xos2009 <- ns(os2009times, df=3)
+designos2009 <- model.matrix(~ Xos2009)
+designos2009
+#estimate the dispersion
+yos2009 <- estimateDisp(yos2009, designos2009)
+sqrt(yos2009$common.dispersion)
+#plot the dispersion
+plotBCV(yos2009)
+#this estimates the coeffcients for each gene
+fitos2009 <- glmQLFit(yos2009, designos2009, robust=TRUE)
+plotQLDisp(fitos2009)
+
+#this looks at the fit of the model across the genes
+fitos2009 <- glmQLFTest(fitos2009, coef=2:4)
+
+#use the default significance test
+summary(decideTests(fitos2009))
+```
+```{r}
+tabos2009 <- as.data.frame(topTags(fitos2009, n=nrow(os2009df)))
+```
+
+```{r}
+#export the results
+#generate the line fits for each gene
+logCPM.obs.os2009 <- cpm(yos2009, normalized.lib.sizes = TRUE, log=TRUE, prior.count=fitos2009$prior.count)
+CPM.obs.os2009 <-  cpm(yos2009, normalized.lib.sizes = TRUE, log=FALSE, prior.count=fitos2009$prior.count)
+logCPM.fit.os2009 <- cpm(fitos2009, normalized.lib.sizes = TRUE, log=TRUE)
+```
+```{r}
+#export the RLE normalization, CPM, and log-CPM to files
+write.csv(yos2009[["samples"]],"Geneclusters_mincount1_OS2009_consensusMAGs_bowtie_library_normalization.csv")
+write.csv(CPM.obs.os2009,"Geneclusters_mincount1_OS2009_consensusMAGs_bowtie_normalized_CPM.csv")
+write.csv(logCPM.obs.os2009,"Geneclusters_mincount1_OS2009_consensusMAGs_bowtie_normalized_log2CPM.csv")
+write.csv(tabos2009,"Geneclusters_OS2009_mincount1_consensusMAGs_bowtie_edgeR_RLE_ns_fit.csv")
+```
+Concatenated time series
+
+```{r}
+#input into the DE analysis pipeline
+yall <- DGEList(counts=orderedgcdf,group=allsamples)
+
+#remove genes that fit the default parameters for low expression in edgeR
+keepall <-filterByExpr(yall, min.count=1)
+table(keepall)
+
+#use the library size calculation in edgeR with the RLE option
+yall <- yall[keepall, , keep.lib.sizes=FALSE]
+yall <- calcNormFactors(yall, method="RLE")
+yall$samples
+```
+```{r}
+#model as a 3-degree of freedom spline fit
+Xall <- ns(alltimes, df=3)
+designall <- model.matrix(~ Xall)
+designall
+#estimate the dispersion
+yall <- estimateDisp(yall, designall)
+sqrt(yall$common.dispersion)
+#plot the dispersion
+plotBCV(yall)
+#this estimates the coeffcients for each gene
+fitall <- glmQLFit(yall, designall, robust=TRUE)
+plotQLDisp(fitall)
+
+#this looks at the fit of the model across the genes
+fitall <- glmQLFTest(fitall, coef=2:4)
+
+#use the default significance test
+summary(decideTests(fitall))
+```
+```{r}
+taball <- as.data.frame(topTags(fitall, n=nrow(orderedgcdf)))
+```
+
+```{r}
+#export the results
+#generate the line fits for each gene
+logCPM.obs.all <- cpm(yall, normalized.lib.sizes = TRUE, log=TRUE, prior.count=fitall$prior.count)
+CPM.obs.all <-  cpm(yall, normalized.lib.sizes = TRUE, log=FALSE, prior.count=fitall$prior.count)
+logCPM.fit.all <- cpm(fitall, normalized.lib.sizes = TRUE, log=TRUE)
+```
+```{r}
+#export the RLE normalization, CPM, and log-CPM to files
+write.csv(yall[["samples"]],"Geneclusters_mincount1_all_consensusMAGs_bowtie_library_normalization.csv")
+write.csv(CPM.obs.all,"Geneclusters_mincount1_all_consensusMAGs_bowtie_normalized_CPM.csv")
+write.csv(logCPM.obs.all,"Geneclusters_mincount1_all_consensusMAGs_bowtie_normalized_log2CPM.csv")
+write.csv(taball,"Geneclusters_mincount1_all_consensusMAGs_bowtie_edgeR_RLE_ns_fit.csv")
+```
+
+

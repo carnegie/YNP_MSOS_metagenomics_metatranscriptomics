@@ -1,0 +1,152 @@
+---
+title: "2023_03_23_consensusmetaT_WGCNA_individual_TOMs"
+output: html_notebook
+---
+
+This calculates and saves individual TOM files for use with blockwiseConsensusModules in
+WGCNA at a later step, as that function is unable to save this files.
+
+
+Use intersection of highly expressed genes found in all time series
+
+
+Following the consensus tutorial here: https://horvath.genetics.ucla.edu/html/CoexpressionNetwork/Rpackages/WGCNA/Tutorials/
+```{r}
+library(tidyverse)
+library(WGCNA)
+library(patchwork) #for plotting
+options(stringsAsFactors = FALSE) #set parameters for WGCNA
+
+```
+
+```{r}
+#import the data
+ms2005= read_tsv("/carnegie/data/Shared/Labs/Bhaya/Private/Hot_Spring_Microbes_project/Metatranscriptomic_analysis/metaT_against_mags/edgeR_normalization/2022_10_highexpressed_gc_ms2005.txt")
+ms2009 =read_tsv("/carnegie/data/Shared/Labs/Bhaya/Private/Hot_Spring_Microbes_project/Metatranscriptomic_analysis/metaT_against_mags/edgeR_normalization/2022_10_highexpressed_gc_ms2009.txt")
+os2009=read_tsv("/carnegie/data/Shared/Labs/Bhaya/Private/Hot_Spring_Microbes_project/Metatranscriptomic_analysis/metaT_against_mags/edgeR_normalization/2022_10_highexpressed_gc_os2009.txt")
+
+
+```
+```{r}
+#create a new unique id
+ms2005= ms2005%>% unite(lineage_GC,c("Lineage","Gene Cluster"), remove=FALSE)
+
+#shape to the format that WGCNA expects and remove metadata columns = genes, rows = samples
+ms2005cpm = ms2005 %>% select(lineage_GC,contains("MetofSamp")) %>% select(lineage_GC, contains("MS"))
+ms2005cpm = column_to_rownames(ms2005cpm, "lineage_GC")
+#scale to log2
+logcpmms2005 = log2(ms2005cpm+1)
+
+#create a new unique id
+ms2009= ms2009%>% unite(lineage_GC,c("Lineage","Gene Cluster"), remove=FALSE)
+
+#shape to the format that WGCNA expects and remove metadata columns = genes, rows = samples
+ms2009cpm = ms2009 %>% select(lineage_GC,contains("MetofSamp")) %>% select(lineage_GC, contains("R"))
+ms2009cpm = column_to_rownames(ms2009cpm, "lineage_GC")
+#scale to log2
+logcpmms2009 = log2(ms2009cpm+1)
+
+#create a new unique id
+os2009= os2009%>% unite(lineage_GC,c("Lineage","Gene Cluster"), remove=FALSE)
+
+#shape to the format that WGCNA expects and remove metadata columns = genes, rows = samples
+os2009cpm = os2009 %>% select(lineage_GC,contains("MetofSamp")) %>% select(lineage_GC, contains("cd"))
+os2009cpm = column_to_rownames(os2009cpm, "lineage_GC")
+#scale to log2
+logcpmos2009 = log2(os2009cpm+1)
+
+
+#intersection of genes in both samples
+genesinall= Reduce(intersect, lapply(list(logcpmms2005, logcpmms2009, logcpmos2009),rownames))
+
+setlogcpmms2005 = logcpmms2005[genesinall,]
+setlogcpmms2009 = logcpmms2009[genesinall,]
+setlogcpmos2009 = logcpmos2009[genesinall,]
+```
+```{r}
+#create multiexpression dataset
+multiExpr = vector(mode="list", length = 3)
+multiExpr[[1]] = list(data = as.data.frame(t(setlogcpmms2005)));names(multiExpr[[1]]$data) =rownames(setlogcpmms2005) ;rownames(multiExpr[[1]]$data) = names(setlogcpmms2005);
+multiExpr[[2]] = list(data = as.data.frame(t(setlogcpmms2009)));names(multiExpr[[2]]$data) =rownames(setlogcpmms2009) ;rownames(multiExpr[[2]]$data) = names(setlogcpmms2009);
+multiExpr[[3]] = list(data = as.data.frame(t(setlogcpmos2009)));names(multiExpr[[3]]$data) =rownames(setlogcpmos2009) ;rownames(multiExpr[[3]]$data) = names(setlogcpmos2009);
+
+exprSize = checkSets(multiExpr)
+exprSize
+```
+
+```{r}
+nSets=3
+setLabels = c("MS2005","MS2009", "OS2009")
+# Choose a set of soft-thresholding powers
+powers = c(seq(4,10,by=1), seq(12,20, by=2));
+# Initialize a list to hold the results of scale-free analysis
+powerTables = vector(mode = "list", length = nSets);
+# Call the network topology analysis function for each set in turn
+for (set in 1:nSets)
+powerTables[[set]] = list(data = pickSoftThreshold(multiExpr[[set]]$data, powerVector=powers,
+verbose = 2)[[2]]);
+collectGarbage();
+# Plot the results:
+colors = c("black", "red")
+# Will plot these columns of the returned scale free analysis tables
+plotCols = c(2,5,6,7)
+colNames = c("Scale Free Topology Model Fit", "Mean connectivity", "Median connectivity",
+"Max connectivity");
+
+# Get the minima and maxima of the plotted points
+ylim = matrix(NA, nrow = 2, ncol = 4);
+for (set in 1:nSets)
+{
+for (col in 1:length(plotCols))
+{
+ylim[1, col] = min(ylim[1, col], powerTables[[set]]$data[, plotCols[col]], na.rm = TRUE);
+ylim[2, col] = max(ylim[2, col], powerTables[[set]]$data[, plotCols[col]], na.rm = TRUE);
+}
+}
+# Plot the quantities in the chosen columns vs. the soft thresholding power
+sizeGrWindow(8, 6)
+#pdf(file = "Plots/scaleFreeAnalysis.pdf", wi = 8, he = 6);
+par(mfcol = c(2,2));
+par(mar = c(4.2, 4.2 , 2.2, 0.5))
+cex1 = 0.7;
+for (col in 1:length(plotCols)) for (set in 1:nSets)
+{
+if (set==1)
+{
+plot(powerTables[[set]]$data[,1], -sign(powerTables[[set]]$data[,3])*powerTables[[set]]$data[,2],
+xlab="Soft Threshold (power)",ylab=colNames[col],type="n", ylim = ylim[, col],
+main = colNames[col]);
+addGrid();
+}
+if (col==1)
+{
+text(powerTables[[set]]$data[,1], -sign(powerTables[[set]]$data[,3])*powerTables[[set]]$data[,2],
+labels=powers,cex=cex1,col=colors[set]);
+} else
+text(powerTables[[set]]$data[,1], powerTables[[set]]$data[,plotCols[col]],
+labels=powers,cex=cex1,col=colors[set]);
+if (col==1)
+{
+legend("bottomright", legend = setLabels, col = colors, pch = 20) ;
+} else
+legend("topright", legend = setLabels, col = colors, pch = 20) ;
+}
+#dev.off();
+
+```
+
+use default power from FAQ for number of samples and network type
+```{r}
+indTOMs = blockwiseIndividualTOMs(multiExpr,maxBlockSize = 25000, power=18,networkType = "signed", saveTOMs = TRUE,
+individualTOMFileNames = "2023_03_23_individualTOM-Set%s-Block%b.RData", verbose=5)
+```
+
+
+```{r}
+save(indTOMs, file="2023_03_23_individualTOMs.RData")
+```
+
+```{r}
+save.image("2023_03_23_consensusmetaT_WGCNA_individual_TOMs.RData")
+```
+
